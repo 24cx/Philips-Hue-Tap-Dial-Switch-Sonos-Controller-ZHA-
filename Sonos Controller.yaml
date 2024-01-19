@@ -1,0 +1,191 @@
+blueprint:
+  name: Philips Hue Tap Dial Switch Sonos Controller (ZHA)
+  description: Use Philips Tap Dial to control Sonos (ZHA version).
+  domain: automation
+  input:
+    switch:
+      name: Philips Hue Tap Dial Switch
+      description: The switch that will trigger the automation
+      selector:
+        device:
+          integration: zha
+          manufacturer: Signify Netherlands B.V.
+          model: RDM002
+          multiple: false
+    sonos_controller:
+      name: Sonos controller device
+      description: The sonos controller that this tap dial will operate
+      selector:
+        entity:
+          multiple: false
+          filter:
+          - domain:
+            - media_player
+            integration: sonos
+    volume_dial_fast:
+      name: Fast dial volume increase/decrease
+      description: How fast the volume is increase or decreased when dialing fast.
+        The range is 0.0 to 1.0
+      default: 0.1
+      selector:
+        number:
+          min: 0.0
+          max: 1.0
+          step: 0.01
+          mode: slider
+    volume_dial_slow:
+      name: Slow dial volume increase/decrease
+      description: How fast the volume is increase or decreased when dialing slow.
+        The range is 0.0 to 1.0
+      default: 0.05
+      selector:
+        number:
+          min: 0.0
+          max: 1.0
+          step: 0.01
+          mode: slider
+    volume_dial_step:
+      name: Singel step dial volume increase/decrease
+      description: How fast the volume is increase or decreased when dialing a single
+        step at a time. The range is 0.0 to 1.0
+      default: 0.01
+      selector:
+        number:
+          min: 0.0
+          max: 1.0
+          step: 0.01
+          mode: slider
+
+variables:
+  sonos_controller: !input sonos_controller
+  volume_dial_fast: !input volume_dial_fast
+  volume_dial_slow: !input volume_dial_slow
+  volume_dial_step: !input volume_dial_step
+  event: '{{ trigger.event.data.command }}'
+  scene: '{{ trigger.event.data.args[1] }}'
+  step_mode: '{{ trigger.event.data.params.step_mode }}'
+  step_size: '{{ trigger.event.data.params.step_size }}'
+  
+mode: restart
+max_exceeded: silent
+
+trigger:
+- platform: event
+  event_type: zha_event
+  event_data:
+    device_id: !input switch
+
+action:
+  - choose:
+    # Buttons
+    - conditions:
+      - '{{ event == "recall" }}'
+      - '{{ scene == 1 }}'
+      sequence:
+      - service: media_player.media_play_pause
+        target:
+          entity_id: !input sonos_controller
+    - conditions:
+      - '{{ event == "recall" }}'
+      - '{{ scene == 0 }}'
+      sequence:
+      - service: media_player.media_play_pause
+        target:
+          entity_id: !input sonos_controller
+    - conditions:
+      - '{{ event == "recall" }}'
+      - '{{ scene == 5 }}'
+      sequence:
+      - service: media_player.media_previous_track
+        target:
+          entity_id: !input sonos_controller
+    - conditions:
+      - '{{ event == "recall" }}'
+      - '{{ scene == 4 }}'
+      sequence:
+      - service: media_player.media_next_track
+        target:
+          entity_id: !input sonos_controller
+  
+    # Dial rotatation
+    - conditions:
+      - '{{ event == "step_with_on_off" }}'
+      - '{{ step_mode == ''StepMode.Down'' }}'
+      - '{{ step_size == 1 }}' # step rotatation
+      sequence:
+      - repeat:
+          count: '{{ state_attr(sonos_controller, ''group_members'') | length }}'
+          sequence:
+          - service: media_player.volume_set
+            data:
+              volume_level: '{{ [state_attr(state_attr(sonos_controller, ''group_members'')[repeat.index - 1], ''volume_level'') - volume_dial_step, 0] | max | float }}'
+            target:
+              entity_id: '{{ state_attr(sonos_controller, ''group_members'')[repeat.index - 1] }}'
+    - conditions:
+      - '{{ event == "step_with_on_off" }}'
+      - '{{ step_mode == ''StepMode.Down'' }}'
+      - '{{ step_size > 1 }}'
+      - '{{ step_size < 10 }}' # slow rotatation
+      sequence:
+      - repeat:
+          count: '{{ state_attr(sonos_controller, ''group_members'') | length }}'
+          sequence:
+          - service: media_player.volume_set
+            data:
+              volume_level: '{{ [state_attr(state_attr(sonos_controller, ''group_members'')[repeat.index - 1], ''volume_level'') - volume_dial_slow, 0] | max | float }}'
+            target:
+              entity_id: '{{ state_attr(sonos_controller, ''group_members'')[repeat.index - 1] }}'
+    - conditions:
+      - '{{ event == "step_with_on_off" }}'
+      - '{{ step_mode == ''StepMode.Down'' }}'
+      - '{{ step_size > 9 }}' # fast rotatation
+      sequence:
+      - repeat:
+          count: '{{ state_attr(sonos_controller, ''group_members'') | length }}'
+          sequence:
+          - service: media_player.volume_set
+            data:
+              volume_level: '{{ [state_attr(state_attr(sonos_controller, ''group_members'')[repeat.index - 1], ''volume_level'') - volume_dial_fast, 0] | max | float }}'
+            target:
+              entity_id: '{{ state_attr(sonos_controller, ''group_members'')[repeat.index - 1] }}'
+
+    - conditions:
+      - '{{ event == "step_with_on_off" }}'
+      - '{{ step_mode == ''StepMode.Up'' }}'
+      - '{{ step_size == 1 }}' # step rotatation
+      sequence:
+      - repeat:
+          count: '{{ state_attr(sonos_controller, ''group_members'') | length }}'
+          sequence:
+          - service: media_player.volume_set
+            data:
+              volume_level: '{{ [state_attr(state_attr(sonos_controller, ''group_members'')[repeat.index - 1], ''volume_level'') + volume_dial_step, 0] | max | float }}'
+            target:
+              entity_id: '{{ state_attr(sonos_controller, ''group_members'')[repeat.index - 1] }}'
+    - conditions:
+      - '{{ event == "step_with_on_off" }}'
+      - '{{ step_mode == ''StepMode.Up'' }}'
+      - '{{ step_size > 1 }}'
+      - '{{ step_size < 10 }}' # slow rotatation
+      sequence:
+      - repeat:
+          count: '{{ state_attr(sonos_controller, ''group_members'') | length }}'
+          sequence:
+          - service: media_player.volume_set
+            data:
+              volume_level: '{{ [state_attr(state_attr(sonos_controller, ''group_members'')[repeat.index - 1], ''volume_level'') + volume_dial_slow, 0] | max | float }}'
+            target:
+              entity_id: '{{ state_attr(sonos_controller, ''group_members'')[repeat.index - 1] }}'
+    - conditions:
+      - '{{ event == "step_with_on_off" }}'
+      - '{{ step_mode == ''StepMode.Up'' }}'
+      - '{{ step_size > 9 }}' # fast rotatation
+      sequence:
+      - repeat:
+          count: '{{ state_attr(sonos_controller, ''group_members'') | length }}'
+          sequence:
+          - service: media_player.volume_set
+            data:
+              volume_level: '{{ [state_attr(state_attr(sonos_controller, ''group_members'')[repeat.index - 1], ''volume_level'') + volume_dial_fast, 0] | max | float }}'
+            target:
+              entity_id: '{{ state_attr(sonos_controller, ''group_members'')[repeat.index - 1] }}'
